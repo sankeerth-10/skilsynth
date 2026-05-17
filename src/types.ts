@@ -3,7 +3,9 @@ export enum Phase {
   CONTEXT = 'CONTEXT',
   INTERVIEW = 'INTERVIEW',
   LOADING_REPORT = 'LOADING_REPORT',
-  REPORT = 'REPORT'
+  REPORT = 'REPORT',
+  PRICING = 'PRICING',
+  PRO_DASHBOARD = 'PRO_DASHBOARD'
 }
 
 export interface CandidateContext {

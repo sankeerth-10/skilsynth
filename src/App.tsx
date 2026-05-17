@@ -27,7 +27,8 @@ import {
   Zap,
   Check,
   BookOpen,
-  ExternalLink
+  ExternalLink,
+  LogOut
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -45,9 +46,17 @@ import {
 import { Phase, CandidateContext, InterviewMessage, SkillSynthReport } from './types';
 import { getNextInterviewQuestion, generateReport } from './services/gemini';
 import { useSpeechToText } from './hooks/useSpeechToText';
+import { Logo } from './components/Logo';
+import { Boxes } from '@/components/ui/background-boxes';
+import { auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from './firebase';
+import type { User as FirebaseUser } from 'firebase/auth';
+import { PricingPage } from './components/PricingPage';
+import { ProDashboard } from './components/ProDashboard';
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>(Phase.LANDING);
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [context, setContext] = useState<CandidateContext>({
     goal: '',
     level: '',
@@ -68,6 +77,14 @@ export default function App() {
   const streamRef = useRef<MediaStream | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraRetryTrigger, setCameraRetryTrigger] = useState(0);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const setVideoRef = useCallback((node: HTMLVideoElement | null) => {
     videoRef.current = node;
@@ -248,10 +265,10 @@ export default function App() {
   return (
     <div className={`min-h-screen flex flex-col items-center justify-center p-4 md:p-8 overflow-x-hidden transition-colors duration-700 ${
       phase === Phase.INTERVIEW 
-        ? 'h-screen overflow-hidden bg-slate-50/50' 
+        ? 'h-screen overflow-hidden bg-slate-50' 
         : phase === Phase.REPORT
-        ? 'bg-slate-50/30'
-        : 'bg-white'
+        ? 'bg-slate-50'
+        : 'bg-slate-50'
     }`}>
       <AnimatePresence>
         {phase !== Phase.LANDING && phase !== Phase.LOADING_REPORT && (
@@ -269,12 +286,27 @@ export default function App() {
 
       <AnimatePresence mode="wait">
         {phase === Phase.LANDING && (
-          <LandingPage onStart={() => setPhase(Phase.CONTEXT)} />
+          <LandingPage 
+            onStart={() => {
+              setPhase(Phase.CONTEXT);
+            }}
+            user={user}
+            authLoading={authLoading}
+            onLogin={() => signInWithPopup(auth, googleProvider).catch((error: any) => {
+              if (error.code === 'auth/unauthorized-domain') {
+                alert('Login failed: Unauthorized domain. Please add ' + window.location.hostname + ' to your Firebase Authorized Domains in the console.');
+              } else {
+                console.error(error);
+              }
+            })}
+            onLogout={() => signOut(auth).catch(console.error)}
+            onPricingClick={() => setPhase(Phase.PRICING)}
+          />
         )}
         
         {phase === Phase.CONTEXT && (
           <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            <div className="relative rounded-3xl overflow-hidden bg-slate-900 border border-slate-800 video-glow aspect-video w-full max-w-md mx-auto lg:max-w-none flex items-center justify-center">
+            <div className="relative rounded-3xl overflow-hidden bg-slate-100 border border-slate-200 video-glow aspect-video w-full max-w-md mx-auto lg:max-w-none flex items-center justify-center">
               {cameraError ? (
                 <div className="text-center p-6 space-y-4 z-20">
                   <div className="w-12 h-12 bg-red-500/20 rounded-full flex items-center justify-center mx-auto">
@@ -283,7 +315,7 @@ export default function App() {
                   <p className="text-sm font-medium text-red-200">{cameraError}</p>
                   <button 
                     onClick={() => setCameraRetryTrigger(prev => prev + 1)}
-                    className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm font-medium transition-colors"
+                    className="px-4 py-2 bg-white/10 hover:bg-white/20 text-slate-900 rounded-lg text-sm font-medium transition-colors"
                   >
                     Retry Camera
                   </button>
@@ -340,250 +372,230 @@ export default function App() {
             onRestart={() => window.location.reload()} 
           />
         )}
+
+        {phase === Phase.PRICING && (
+          <PricingPage 
+            onBack={() => setPhase(Phase.LANDING)}
+            onUpgradeSuccess={() => setPhase(Phase.PRO_DASHBOARD)}
+          />
+        )}
+
+        {phase === Phase.PRO_DASHBOARD && (
+          <ProDashboard 
+            onBack={() => setPhase(Phase.LANDING)}
+          />
+        )}
       </AnimatePresence>
     </div>
   );
 }
 
-function LandingPage({ onStart }: { onStart: () => void }) {
+function LandingPage({ onStart, user, authLoading, onLogin, onLogout, onPricingClick }: { 
+  onStart: () => void;
+  user: FirebaseUser | null;
+  authLoading: boolean;
+  onLogin: () => void;
+  onLogout: () => void;
+  onPricingClick: () => void;
+}) {
   return (
-    <div className="w-full min-h-screen bg-white selection:bg-indigo-100">
+    <div className="w-full min-h-screen bg-slate-50 selection:bg-cyan-900/30">
       {/* Navigation */}
-      <nav className="fixed top-0 w-full z-50 glass border-b border-slate-100">
+      <nav className="fixed top-0 w-full z-50 glass border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-200">
-              <Brain className="w-6 h-6" />
+            <div className="w-10 h-10 flex items-center justify-center">
+              <Logo className="w-8 h-8" />
             </div>
             <span className="text-xl font-bold tracking-tight text-slate-900">SkillSynth</span>
           </div>
           <div className="hidden md:flex items-center gap-8">
-            <a href="#features" className="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">Features</a>
-            <a href="#how-it-works" className="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">How it Works</a>
-            <a href="#pricing" className="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">Pricing</a>
+            <a href="#features" className="text-sm font-medium text-slate-600 hover:text-cyan-400 transition-colors">Features</a>
+            <a href="#how-it-works" className="text-sm font-medium text-slate-600 hover:text-cyan-400 transition-colors">How it Works</a>
+            <button onClick={onPricingClick} className="text-sm font-medium text-slate-600 hover:text-cyan-400 transition-colors">Pricing</button>
           </div>
           <div className="flex items-center gap-4">
-            <button className="text-sm font-semibold text-slate-600 hover:text-indigo-600 px-4 py-2 transition-colors">Log in</button>
-            <button 
-              onClick={onStart}
-              className="px-6 py-2.5 bg-indigo-600 text-white rounded-full font-semibold text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200"
-            >
-              Get Started
-            </button>
+            {!authLoading && !user && (
+              <>
+                <button onClick={onLogin} className="text-sm font-semibold text-slate-600 hover:text-cyan-400 px-4 py-2 transition-colors">Log in</button>
+                <button 
+                  onClick={onStart}
+                  className="px-6 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-full font-semibold text-sm hover:from-cyan-400 hover:to-blue-500 transition-all shadow-[0_0_20px_rgba(6,182,212,0.4)]"
+                >
+                  Get Started
+                </button>
+              </>
+            )}
+            {!authLoading && user && (
+              <>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-medium text-slate-700 hidden sm:block">{user.displayName || user.email}</span>
+                  {user.photoURL && <img src={user.photoURL} alt="Profile" className="w-8 h-8 rounded-full border border-slate-200" />}
+                  <button onClick={onLogout} className="text-slate-500 hover:text-red-500 transition-colors" title="Log out">
+                    <LogOut className="w-5 h-5" />
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </nav>
 
       {/* Hero Section */}
-      <section className="relative pt-40 pb-24 px-6 overflow-hidden">
-        {/* Video Background */}
+      <section className="relative min-h-[90vh] flex items-center justify-center pt-20 pb-24 overflow-hidden bg-slate-50">
+        {/* Background Animation */}
         <div className="absolute inset-0 z-0">
-          <video 
-            autoPlay 
-            loop 
-            muted 
-            playsInline
-            poster="https://picsum.photos/seed/interview-bg/1920/1080"
-            className="w-full h-full object-cover"
-          >
-            <source src="/input_file_0.mp4" type="video/mp4" />
-          </video>
-          <div className="absolute inset-0 bg-white/20"></div>
+          <Boxes />
         </div>
+        <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10"></div>
 
-        <div className="relative z-10 max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+        <div className="relative z-20 max-w-5xl mx-auto px-6 pt-16 flex flex-col items-center text-center">
           <motion.div 
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="space-y-8"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-cyan-900/30 border border-cyan-500/30 text-cyan-400 text-xs font-bold uppercase tracking-wider mb-8 shadow-[0_0_15px_rgba(6,182,212,0.2)]"
           >
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-600 text-[10px] font-bold uppercase tracking-wider">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
-              </span>
-              Next-Gen Interview Prep
-            </div>
-            
-            <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight text-slate-900 leading-[1.1]">
-              Master Your Soft Skills with <span className="text-gradient">AI-Powered</span> Interviews
-            </h1>
-            
-            <p className="text-xl text-slate-600 max-w-xl leading-relaxed">
-              Experience real interview pressure, get your SkillSynth DNA report, and improve your placement readiness with our advanced neural analysis.
-            </p>
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
+            </span>
+            AI-Powered Placement Readiness Platform
+          </motion.div>
+          
+          <motion.h1 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+            className="text-4xl sm:text-5xl md:text-7xl font-extrabold tracking-tight text-slate-900 mb-6 leading-[1.1]"
+          >
+            Transform Soft Skills into Your <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-500">Competitive Advantage</span>
+          </motion.h1>
+          
+          <motion.p 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+            className="text-xl md:text-2xl text-slate-600 max-w-3xl leading-relaxed mb-10"
+          >
+            SkillSynth evaluates communication, confidence, body language, and interview performance to generate your SkillSynth DNA report.
+          </motion.p>
 
-            <div className="flex flex-col sm:flex-row items-center gap-4">
-              <button 
-                onClick={onStart}
-                className="w-full sm:w-auto px-8 py-4 bg-indigo-600 text-white rounded-2xl font-bold text-lg hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-200 flex items-center justify-center gap-3"
-              >
-                Start Free Interview
-                <ChevronRight className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="flex items-center gap-6 pt-4">
-              <div className="flex -space-x-3">
-                {[1, 2, 3, 4].map(i => (
-                  <div key={i} className="w-10 h-10 rounded-full border-2 border-white bg-slate-100 overflow-hidden">
-                    <img src={`https://picsum.photos/seed/user${i}/100/100`} alt="User" referrerPolicy="no-referrer" />
-                  </div>
-                ))}
-              </div>
-              <p className="text-sm text-slate-500 font-medium">
-                Joined by <span className="text-slate-900 font-bold">2,000+</span> candidates this week
-              </p>
-            </div>
-
-            <div className="pt-8 border-t border-slate-100">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-6">Trusted by candidates from</p>
-              <div className="flex flex-wrap items-center gap-8 opacity-40 grayscale">
-                {['Google', 'Meta', 'Amazon', 'Netflix'].map(company => (
-                  <span key={company} className="text-xl font-black tracking-tighter text-slate-900">{company}</span>
-                ))}
-              </div>
-            </div>
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.3 }}
+            className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto"
+          >
+            <button 
+              onClick={onStart}
+              className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-2xl font-bold text-lg hover:from-cyan-400 hover:to-blue-500 transition-all shadow-[0_0_30px_rgba(6,182,212,0.4)] flex items-center justify-center gap-3"
+            >
+              Start Free Interview
+              <ChevronRight className="w-5 h-5" />
+            </button>
+            <button className="w-full sm:w-auto px-8 py-4 bg-white text-slate-900 border border-slate-200 hover:bg-slate-700 rounded-2xl font-bold text-lg transition-all flex items-center justify-center gap-3">
+              View Sample DNA Report
+            </button>
           </motion.div>
 
           <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.2 }}
-            className="relative"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.4 }}
+            className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-6 text-sm font-medium text-slate-500"
           >
-            {/* Mock Interview Interface Visual */}
-            <div className="relative rounded-[2.5rem] p-4 bg-slate-900 shadow-2xl shadow-indigo-200 border border-slate-800">
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-slate-900 rounded-b-2xl z-10"></div>
-              <div className="relative aspect-[4/3] rounded-[1.5rem] overflow-hidden bg-slate-800">
-                <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900">
-                  {/* Grid pattern overlay */}
-                  <div className="absolute inset-0 bg-[linear-gradient(to_right,#4f4f4f2e_1px,transparent_1px),linear-gradient(to_bottom,#4f4f4f2e_1px,transparent_1px)] bg-[size:24px_24px] [mask-image:radial-gradient(ellipse_80%_50%_at_50%_50%,#000_70%,transparent_100%)]"></div>
-                  
-                  {/* Abstract AI Representation */}
-                  <div className="absolute inset-0 flex items-center justify-center pb-20">
-                    <div className="relative">
-                      {/* Glowing rings */}
-                      <motion.div 
-                        animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.1, 0.3] }}
-                        transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                        className="absolute inset-0 rounded-full bg-indigo-500 blur-3xl"
-                      />
-                      <motion.div 
-                        animate={{ scale: [1, 1.5, 1], opacity: [0.2, 0.05, 0.2] }}
-                        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
-                        className="absolute inset-0 rounded-full bg-blue-500 blur-2xl"
-                      />
-                      {/* Core */}
-                      <div className="relative w-32 h-32 rounded-full bg-gradient-to-tr from-indigo-600 to-blue-500 p-1 shadow-2xl shadow-indigo-500/50">
-                        <div className="w-full h-full rounded-full bg-slate-900 flex items-center justify-center">
-                          <Brain className="w-12 h-12 text-indigo-400" />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                {/* AI Question Overlay */}
-                <div className="absolute bottom-6 left-6 right-6 glass p-6 rounded-2xl border-white/10">
-                  <div className="flex items-start gap-4">
-                    <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shrink-0">
-                      <Brain className="w-6 h-6" />
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">AI Interviewer</p>
-                      <p className="text-sm text-white font-medium leading-relaxed">
-                        "Tell me about a time you had to handle a difficult stakeholder. How did you manage the situation?"
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* User Response UI */}
-                <div className="absolute top-6 right-6 flex flex-col gap-3">
-                  <div className="glass px-3 py-1.5 rounded-full flex items-center gap-2 border-white/10">
-                    <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                    <span className="text-[10px] font-bold text-white uppercase tracking-widest">Recording</span>
-                  </div>
-                  <div className="glass p-3 rounded-2xl border-white/10 flex items-center gap-3">
-                    <div className="flex gap-1">
-                      {[1, 2, 3, 4].map(i => (
-                        <motion.div 
-                          key={i}
-                          animate={{ height: [4, 12, 4] }}
-                          transition={{ repeat: Infinity, duration: 0.5, delay: i * 0.1 }}
-                          className="w-1 bg-indigo-400 rounded-full"
-                        />
-                      ))}
-                    </div>
-                    <span className="text-[10px] font-bold text-white uppercase tracking-widest">00:42</span>
-                  </div>
-                </div>
+            <div className="flex items-center justify-center gap-2">
+              <div className="w-5 h-5 rounded-full bg-cyan-100 flex items-center justify-center">
+                <div className="w-2 h-2 rounded-full bg-cyan-400"></div>
               </div>
+              Used by students preparing for placements
             </div>
-
-            {/* Floating Stats */}
-            <motion.div 
-              animate={{ y: [0, -10, 0] }}
-              transition={{ repeat: Infinity, duration: 5, ease: "easeInOut" }}
-              className="absolute -bottom-10 -left-10 glass p-6 rounded-3xl border-slate-200 shadow-xl hidden md:block"
-            >
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600">
-                  <TrendingUp className="w-6 h-6" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-slate-900">94%</p>
-                  <p className="text-xs text-slate-500 font-medium">Confidence Score</p>
-                </div>
+            <div className="flex items-center justify-center gap-2">
+              <div className="w-5 h-5 rounded-full bg-purple-100 flex items-center justify-center">
+                <div className="w-2 h-2 rounded-full bg-purple-400"></div>
               </div>
-            </motion.div>
-
-            <motion.div 
-              animate={{ y: [0, 10, 0] }}
-              transition={{ repeat: Infinity, duration: 6, ease: "easeInOut", delay: 1 }}
-              className="absolute -top-6 -right-6 glass p-6 rounded-3xl border-slate-200 shadow-xl hidden md:block"
-            >
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-purple-50 rounded-2xl text-purple-600">
-                  <Award className="w-6 h-6" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-slate-900">DNA Report</p>
-                  <p className="text-xs text-slate-500 font-medium">Ready in 3 seconds</p>
-                </div>
+              Detailed AI-generated feedback
+            </div>
+            <div className="flex items-center justify-center gap-2">
+              <div className="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center">
+                <div className="w-2 h-2 rounded-full bg-blue-400"></div>
               </div>
-            </motion.div>
+              Hireability Score tracking
+            </div>
           </motion.div>
         </div>
+
+        {/* Floating Metric Cards */}
+        <motion.div 
+          animate={{ y: [0, -15, 0] }}
+          transition={{ repeat: Infinity, duration: 6, ease: "easeInOut" }}
+          className="absolute left-[5%] top-1/4 hidden lg:flex items-center gap-4 glass3d p-4 rounded-3xl z-20 group hover:scale-105 transition-transform"
+        >
+          <div className="p-3 bg-cyan-500/20 rounded-2xl text-cyan-400 group-hover:shadow-[0_0_15px_rgba(6,182,212,0.5)] transition-shadow">
+            <Mic className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-slate-900">84/100</p>
+            <p className="text-[10px] text-cyan-400 uppercase tracking-widest">Communication Score</p>
+          </div>
+        </motion.div>
+
+        <motion.div 
+          animate={{ y: [0, 15, 0] }}
+          transition={{ repeat: Infinity, duration: 7, ease: "easeInOut", delay: 1 }}
+          className="absolute right-[5%] top-1/3 hidden lg:flex items-center gap-4 glass3d p-4 rounded-3xl z-20 group hover:scale-105 transition-transform"
+        >
+          <div className="p-3 bg-purple-500/20 rounded-2xl text-purple-400 group-hover:shadow-[0_0_15px_rgba(168,85,247,0.5)] transition-shadow">
+            <TrendingUp className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-slate-900">91/100</p>
+            <p className="text-[10px] text-purple-400 uppercase tracking-widest">Confidence Score</p>
+          </div>
+        </motion.div>
+
+        <motion.div 
+          animate={{ y: [0, -10, 0] }}
+          transition={{ repeat: Infinity, duration: 5, ease: "easeInOut", delay: 2 }}
+          className="absolute right-[15%] bottom-1/4 hidden lg:flex items-center gap-4 glass3d p-4 rounded-3xl z-20 group hover:scale-105 transition-transform"
+        >
+          <div className="p-3 bg-blue-500/20 rounded-2xl text-blue-400 group-hover:shadow-[0_0_15px_rgba(59,130,246,0.5)] transition-shadow">
+            <Award className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-slate-900">87/100</p>
+            <p className="text-[10px] text-blue-400 uppercase tracking-widest">Hireability Score</p>
+          </div>
+        </motion.div>
       </section>
 
       {/* Features Section */}
-      <section id="features" className="py-32 bg-slate-50">
+      <section id="features" className="py-32 bg-slate-50 border-t border-slate-900">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center max-w-3xl mx-auto mb-24 space-y-4">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-600 text-[10px] font-bold uppercase tracking-wider">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-900/30 border border-indigo-500/30 text-indigo-400 text-[10px] font-bold uppercase tracking-wider">
               Platform Features
             </div>
             <h2 className="text-4xl md:text-5xl font-bold text-slate-900 tracking-tight">Everything you need to land your dream job</h2>
-            <p className="text-lg text-slate-600">Our AI-driven platform analyzes every aspect of your performance to give you a competitive edge.</p>
+            <p className="text-lg text-slate-500">Our AI-driven platform analyzes every aspect of your performance to give you a competitive edge.</p>
           </div>
 
           <div className="space-y-32">
             {/* Feature 1: Personalized Tailoring */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
               <div className="space-y-6 order-2 lg:order-1">
-                <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-200">
+                <div className="w-14 h-14 bg-indigo-500/20 rounded-2xl flex items-center justify-center text-indigo-400 border border-indigo-500/30">
                   <Target className="w-8 h-8" />
                 </div>
                 <h3 className="text-3xl font-bold text-slate-900">Personalized Career Tailoring</h3>
-                <p className="text-lg text-slate-600 leading-relaxed">
+                <p className="text-lg text-slate-500 leading-relaxed">
                   SkillSynth begins by understanding your unique professional DNA. By analyzing your career goals, experience level, confidence, and key weaknesses, our system customizes the entire interview experience to match your specific needs.
                 </p>
                 <ul className="space-y-3">
                   {['Goal-oriented question mapping', 'Experience-level calibration', 'Confidence-based pressure scaling'].map((item, i) => (
-                    <li key={i} className="flex items-center gap-3 text-slate-700 font-medium">
-                      <Check className="w-5 h-5 text-emerald-500" />
+                    <li key={i} className="flex items-center gap-3 text-slate-600 font-medium">
+                      <Check className="w-5 h-5 text-indigo-400" />
                       {item}
                     </li>
                   ))}
@@ -591,22 +603,22 @@ function LandingPage({ onStart }: { onStart: () => void }) {
               </div>
               <div className="relative order-1 lg:order-2">
                 <div className="aspect-video rounded-[2.5rem] overflow-hidden shadow-2xl border border-slate-200">
-                  <div className="w-full h-full bg-gradient-to-br from-indigo-50 to-slate-100 flex items-center justify-center relative">
-                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#818cf82e_1px,transparent_1px),linear-gradient(to_bottom,#818cf82e_1px,transparent_1px)] bg-[size:24px_24px]"></div>
-                    <div className="relative glass p-8 rounded-3xl border-white/50 shadow-xl flex flex-col items-center gap-4">
-                      <div className="w-20 h-20 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600">
+                  <div className="w-full h-full bg-slate-100 flex items-center justify-center relative">
+                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#818cf815_1px,transparent_1px),linear-gradient(to_bottom,#818cf815_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+                    <div className="relative glass3d p-8 rounded-3xl flex flex-col items-center gap-4">
+                      <div className="w-20 h-20 bg-indigo-900/50 rounded-full flex items-center justify-center text-indigo-400">
                         <Target className="w-10 h-10" />
                       </div>
                       <div className="space-y-2 text-center">
-                        <div className="h-2 w-32 bg-indigo-200 rounded-full mx-auto"></div>
-                        <div className="h-2 w-24 bg-indigo-100 rounded-full mx-auto"></div>
+                        <div className="h-2 w-32 bg-indigo-500/30 rounded-full mx-auto"></div>
+                        <div className="h-2 w-24 bg-indigo-500/20 rounded-full mx-auto"></div>
                       </div>
                     </div>
                   </div>
                 </div>
-                <div className="absolute -bottom-6 -right-6 glass p-6 rounded-3xl border-slate-200 shadow-xl hidden md:block">
+                <div className="absolute -bottom-6 -right-6 glass3d p-6 rounded-3xl hidden md:block">
                   <div className="flex items-center gap-4">
-                    <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-600">
+                    <div className="p-3 bg-indigo-900/30 rounded-2xl text-indigo-400">
                       <User className="w-6 h-6" />
                     </div>
                     <div>
@@ -622,22 +634,22 @@ function LandingPage({ onStart }: { onStart: () => void }) {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
               <div className="relative">
                 <div className="aspect-video rounded-[2.5rem] overflow-hidden shadow-2xl border border-slate-200">
-                  <div className="w-full h-full bg-gradient-to-br from-purple-50 to-slate-100 flex items-center justify-center relative">
-                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#c084fc2e_1px,transparent_1px),linear-gradient(to_bottom,#c084fc2e_1px,transparent_1px)] bg-[size:24px_24px]"></div>
-                    <div className="relative glass p-8 rounded-3xl border-white/50 shadow-xl flex flex-col items-center gap-4">
-                      <div className="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center text-purple-600">
+                  <div className="w-full h-full bg-slate-100 flex items-center justify-center relative">
+                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#c084fc15_1px,transparent_1px),linear-gradient(to_bottom,#c084fc15_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+                    <div className="relative glass3d p-8 rounded-3xl flex flex-col items-center gap-4">
+                      <div className="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center text-purple-400">
                         <Brain className="w-10 h-10" />
                       </div>
                       <div className="space-y-2 text-center">
-                        <div className="h-2 w-32 bg-purple-200 rounded-full mx-auto"></div>
-                        <div className="h-2 w-24 bg-purple-100 rounded-full mx-auto"></div>
+                        <div className="h-2 w-32 bg-purple-500/30 rounded-full mx-auto"></div>
+                        <div className="h-2 w-24 bg-purple-500/20 rounded-full mx-auto"></div>
                       </div>
                     </div>
                   </div>
                 </div>
-                <div className="absolute -top-6 -left-6 glass p-6 rounded-3xl border-slate-200 shadow-xl hidden md:block">
+                <div className="absolute -top-6 -left-6 glass3d p-6 rounded-3xl hidden md:block">
                   <div className="flex items-center gap-4">
-                    <div className="p-3 bg-red-50 rounded-2xl text-red-600">
+                    <div className="p-3 bg-red-900/30 rounded-2xl text-red-400">
                       <Activity className="w-6 h-6" />
                     </div>
                     <div>
@@ -648,17 +660,17 @@ function LandingPage({ onStart }: { onStart: () => void }) {
                 </div>
               </div>
               <div className="space-y-6">
-                <div className="w-14 h-14 bg-purple-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-purple-200">
+                <div className="w-14 h-14 bg-purple-500/20 rounded-2xl flex items-center justify-center text-purple-400 border border-purple-500/30">
                   <Brain className="w-8 h-8" />
                 </div>
                 <h3 className="text-3xl font-bold text-slate-900">Semi-Adaptive AI Interviews</h3>
-                <p className="text-lg text-slate-600 leading-relaxed">
+                <p className="text-lg text-slate-500 leading-relaxed">
                   Experience a realistic HR environment where questions evolve based on your responses. Simulating real-world pressure with time limits, follow-ups, and challenging prompts that test your critical thinking and adaptability.
                 </p>
                 <ul className="space-y-3">
                   {['Dynamic follow-up questions', 'Realistic time-pressure simulation', 'Behavioral & situational challenges'].map((item, i) => (
-                    <li key={i} className="flex items-center gap-3 text-slate-700 font-medium">
-                      <Check className="w-5 h-5 text-emerald-500" />
+                    <li key={i} className="flex items-center gap-3 text-slate-600 font-medium">
+                      <Check className="w-5 h-5 text-purple-400" />
                       {item}
                     </li>
                   ))}
@@ -669,17 +681,17 @@ function LandingPage({ onStart }: { onStart: () => void }) {
             {/* Feature 3: Voice & Communication Analysis */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
               <div className="space-y-6 order-2 lg:order-1">
-                <div className="w-14 h-14 bg-emerald-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-emerald-200">
+                <div className="w-14 h-14 bg-cyan-500/20 rounded-2xl flex items-center justify-center text-cyan-400 border border-cyan-500/30">
                   <Mic className="w-8 h-8" />
                 </div>
                 <h3 className="text-3xl font-bold text-slate-900">Neural Voice Analysis</h3>
-                <p className="text-lg text-slate-600 leading-relaxed">
+                <p className="text-lg text-slate-500 leading-relaxed">
                   Our platform captures your voice responses and performs deep neural analysis. We evaluate communication quality, clarity, fluency, and the depth of your answers to provide a comprehensive view of your soft skill proficiency.
                 </p>
                 <ul className="space-y-3">
                   {['Fluency & clarity detection', 'Tone & sentiment analysis', 'Filler word & pace tracking'].map((item, i) => (
-                    <li key={i} className="flex items-center gap-3 text-slate-700 font-medium">
-                      <Check className="w-5 h-5 text-emerald-500" />
+                    <li key={i} className="flex items-center gap-3 text-slate-600 font-medium">
+                      <Check className="w-5 h-5 text-cyan-400" />
                       {item}
                     </li>
                   ))}
@@ -687,23 +699,23 @@ function LandingPage({ onStart }: { onStart: () => void }) {
               </div>
               <div className="relative order-1 lg:order-2">
                 <div className="aspect-video rounded-[2.5rem] overflow-hidden shadow-2xl border border-slate-200">
-                  <div className="w-full h-full bg-gradient-to-br from-emerald-50 to-slate-100 flex items-center justify-center relative">
-                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#34d3992e_1px,transparent_1px),linear-gradient(to_bottom,#34d3992e_1px,transparent_1px)] bg-[size:24px_24px]"></div>
-                    <div className="relative glass p-8 rounded-3xl border-white/50 shadow-xl flex flex-col items-center gap-4">
-                      <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600">
+                  <div className="w-full h-full bg-slate-100 flex items-center justify-center relative">
+                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#06b6d415_1px,transparent_1px),linear-gradient(to_bottom,#06b6d415_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+                    <div className="relative glass3d p-8 rounded-3xl flex flex-col items-center gap-4">
+                      <div className="w-20 h-20 bg-cyan-100 rounded-full flex items-center justify-center text-cyan-400">
                         <Mic className="w-10 h-10" />
                       </div>
                       <div className="flex items-center gap-1">
                         {[1, 2, 3, 4, 5].map(i => (
-                          <div key={i} className="w-2 h-8 bg-emerald-300 rounded-full animate-pulse" style={{ animationDelay: `${i * 0.1}s` }}></div>
+                          <div key={i} className="w-2 h-8 bg-cyan-500/50 rounded-full animate-pulse" style={{ animationDelay: `${i * 0.1}s` }}></div>
                         ))}
                       </div>
                     </div>
                   </div>
                 </div>
-                <div className="absolute -bottom-6 -left-6 glass p-6 rounded-3xl border-slate-200 shadow-xl hidden md:block">
+                <div className="absolute -bottom-6 -left-6 glass3d p-6 rounded-3xl hidden md:block">
                   <div className="flex items-center gap-4">
-                    <div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600">
+                    <div className="p-3 bg-cyan-900/30 rounded-2xl text-cyan-400">
                       <Scan className="w-6 h-6" />
                     </div>
                     <div>
@@ -719,22 +731,22 @@ function LandingPage({ onStart }: { onStart: () => void }) {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
               <div className="relative">
                 <div className="aspect-video rounded-[2.5rem] overflow-hidden shadow-2xl border border-slate-200">
-                  <div className="w-full h-full bg-gradient-to-br from-amber-50 to-slate-100 flex items-center justify-center relative">
-                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#fbbf242e_1px,transparent_1px),linear-gradient(to_bottom,#fbbf242e_1px,transparent_1px)] bg-[size:24px_24px]"></div>
-                    <div className="relative glass p-8 rounded-3xl border-white/50 shadow-xl flex flex-col items-center gap-4">
-                      <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center text-amber-600">
+                  <div className="w-full h-full bg-slate-100 flex items-center justify-center relative">
+                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#3b82f615_1px,transparent_1px),linear-gradient(to_bottom,#3b82f615_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+                    <div className="relative glass3d p-8 rounded-3xl flex flex-col items-center gap-4">
+                      <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center text-blue-400">
                         <Award className="w-10 h-10" />
                       </div>
                       <div className="space-y-2 text-center">
-                        <div className="h-2 w-32 bg-amber-200 rounded-full mx-auto"></div>
-                        <div className="h-2 w-24 bg-amber-100 rounded-full mx-auto"></div>
+                        <div className="h-2 w-32 bg-blue-500/30 rounded-full mx-auto"></div>
+                        <div className="h-2 w-24 bg-blue-500/20 rounded-full mx-auto"></div>
                       </div>
                     </div>
                   </div>
                 </div>
-                <div className="absolute -bottom-6 -right-6 glass p-6 rounded-3xl border-slate-200 shadow-xl hidden md:block">
+                <div className="absolute -bottom-6 -right-6 glass3d p-6 rounded-3xl hidden md:block">
                   <div className="flex items-center gap-4">
-                    <div className="p-3 bg-amber-50 rounded-2xl text-amber-600">
+                    <div className="p-3 bg-blue-900/30 rounded-2xl text-blue-400">
                       <Award className="w-6 h-6" />
                     </div>
                     <div>
@@ -745,17 +757,17 @@ function LandingPage({ onStart }: { onStart: () => void }) {
                 </div>
               </div>
               <div className="space-y-6">
-                <div className="w-14 h-14 bg-amber-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-amber-200">
+                <div className="w-14 h-14 bg-blue-500/20 rounded-2xl flex items-center justify-center text-blue-400 border border-blue-500/30">
                   <Award className="w-8 h-8" />
                 </div>
                 <h3 className="text-3xl font-bold text-slate-900">SkillSynth DNA Report</h3>
-                <p className="text-lg text-slate-600 leading-relaxed">
+                <p className="text-lg text-slate-500 leading-relaxed">
                   Receive a comprehensive "SkillSynth DNA" report after every session. This includes your hireability score, detailed skill ratings, a personality tag, core strengths, growth areas, and a personalized role-fit analysis.
                 </p>
                 <ul className="space-y-3">
                   {['Multi-dimensional skill ratings', 'Personalized improvement roadmap', 'AI-driven role-fit analysis'].map((item, i) => (
-                    <li key={i} className="flex items-center gap-3 text-slate-700 font-medium">
-                      <Check className="w-5 h-5 text-emerald-500" />
+                    <li key={i} className="flex items-center gap-3 text-slate-600 font-medium">
+                      <Check className="w-5 h-5 text-blue-400" />
                       {item}
                     </li>
                   ))}
@@ -766,17 +778,17 @@ function LandingPage({ onStart }: { onStart: () => void }) {
             {/* Feature 5: Continuous Improvement */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
               <div className="space-y-6 order-2 lg:order-1">
-                <div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-blue-200">
+                <div className="w-14 h-14 bg-indigo-500/20 rounded-2xl flex items-center justify-center text-indigo-400 border border-indigo-500/30">
                   <TrendingUp className="w-8 h-8" />
                 </div>
                 <h3 className="text-3xl font-bold text-slate-900">Continuous Improvement System</h3>
-                <p className="text-lg text-slate-600 leading-relaxed">
+                <p className="text-lg text-slate-500 leading-relaxed">
                   SkillSynth is more than just an assessment tool—it's a journey. Retake interviews as many times as you need to track your progress over time, refine your responses, and build the confidence required for high-stakes placements.
                 </p>
                 <ul className="space-y-3">
                   {['Progress tracking over time', 'Unlimited interview simulations', 'Iterative feedback loops'].map((item, i) => (
-                    <li key={i} className="flex items-center gap-3 text-slate-700 font-medium">
-                      <Check className="w-5 h-5 text-emerald-500" />
+                    <li key={i} className="flex items-center gap-3 text-slate-600 font-medium">
+                      <Check className="w-5 h-5 text-indigo-400" />
                       {item}
                     </li>
                   ))}
@@ -784,23 +796,23 @@ function LandingPage({ onStart }: { onStart: () => void }) {
               </div>
               <div className="relative order-1 lg:order-2">
                 <div className="aspect-video rounded-[2.5rem] overflow-hidden shadow-2xl border border-slate-200">
-                  <div className="w-full h-full bg-gradient-to-br from-blue-50 to-slate-100 flex items-center justify-center relative">
-                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#60a5fa2e_1px,transparent_1px),linear-gradient(to_bottom,#60a5fa2e_1px,transparent_1px)] bg-[size:24px_24px]"></div>
-                    <div className="relative glass p-8 rounded-3xl border-white/50 shadow-xl flex flex-col items-center gap-4">
-                      <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
+                  <div className="w-full h-full bg-slate-100 flex items-center justify-center relative">
+                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#818cf815_1px,transparent_1px),linear-gradient(to_bottom,#818cf815_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+                    <div className="relative glass3d p-8 rounded-3xl flex flex-col items-center gap-4">
+                      <div className="w-20 h-20 bg-indigo-900/50 rounded-full flex items-center justify-center text-indigo-400">
                         <TrendingUp className="w-10 h-10" />
                       </div>
                       <div className="flex items-end gap-2 h-12">
                         {[4, 6, 8, 12].map((h, i) => (
-                          <div key={i} className={`w-4 bg-blue-400 rounded-t-sm`} style={{ height: `${h * 4}px` }}></div>
+                          <div key={i} className={`w-4 bg-indigo-500/50 rounded-t-sm`} style={{ height: `${h * 4}px` }}></div>
                         ))}
                       </div>
                     </div>
                   </div>
                 </div>
-                <div className="absolute -top-6 -right-6 glass p-6 rounded-3xl border-slate-200 shadow-xl hidden md:block">
+                <div className="absolute -top-6 -right-6 glass3d p-6 rounded-3xl hidden md:block">
                   <div className="flex items-center gap-4">
-                    <div className="p-3 bg-blue-50 rounded-2xl text-blue-600">
+                    <div className="p-3 bg-indigo-900/30 rounded-2xl text-indigo-400">
                       <TrendingUp className="w-6 h-6" />
                     </div>
                     <div>
@@ -816,22 +828,22 @@ function LandingPage({ onStart }: { onStart: () => void }) {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
               <div className="relative">
                 <div className="aspect-video rounded-[2.5rem] overflow-hidden shadow-2xl border border-slate-200">
-                  <div className="w-full h-full bg-gradient-to-br from-rose-50 to-slate-100 flex items-center justify-center relative">
-                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#fb71852e_1px,transparent_1px),linear-gradient(to_bottom,#fb71852e_1px,transparent_1px)] bg-[size:24px_24px]"></div>
-                    <div className="relative glass p-8 rounded-3xl border-white/50 shadow-xl flex flex-col items-center gap-4">
-                      <div className="w-20 h-20 bg-rose-100 rounded-full flex items-center justify-center text-rose-600">
+                  <div className="w-full h-full bg-slate-100 flex items-center justify-center relative">
+                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#94a3b815_1px,transparent_1px),linear-gradient(to_bottom,#94a3b815_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+                    <div className="relative glass3d p-8 rounded-3xl flex flex-col items-center gap-4">
+                      <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center text-slate-600">
                         <Shield className="w-10 h-10" />
                       </div>
                       <div className="space-y-2 text-center">
-                        <div className="h-2 w-32 bg-rose-200 rounded-full mx-auto"></div>
-                        <div className="h-2 w-24 bg-rose-100 rounded-full mx-auto"></div>
+                        <div className="h-2 w-32 bg-slate-700 rounded-full mx-auto"></div>
+                        <div className="h-2 w-24 bg-slate-700/50 rounded-full mx-auto"></div>
                       </div>
                     </div>
                   </div>
                 </div>
-                <div className="absolute -bottom-6 -left-6 glass p-6 rounded-3xl border-slate-200 shadow-xl hidden md:block">
+                <div className="absolute -bottom-6 -left-6 glass3d p-6 rounded-3xl hidden md:block">
                   <div className="flex items-center gap-4">
-                    <div className="p-3 bg-slate-900 rounded-2xl text-white">
+                    <div className="p-3 bg-white rounded-2xl text-slate-600">
                       <Shield className="w-6 h-6" />
                     </div>
                     <div>
@@ -842,17 +854,17 @@ function LandingPage({ onStart }: { onStart: () => void }) {
                 </div>
               </div>
               <div className="space-y-6">
-                <div className="w-14 h-14 bg-slate-900 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-slate-200">
+                <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center text-slate-600 shadow-lg border border-slate-200">
                   <Briefcase className="w-8 h-8" />
                 </div>
                 <h3 className="text-3xl font-bold text-slate-900">Practical Placement Readiness</h3>
-                <p className="text-lg text-slate-600 leading-relaxed">
+                <p className="text-lg text-slate-500 leading-relaxed">
                   Designed for students, colleges, and job seekers. Support for downloadable reports, role-specific interview flows, and a clean, intuitive interface that replicates real interview environments to ensure you're fully prepared.
                 </p>
                 <ul className="space-y-3">
                   {['Downloadable PDF reports', 'Role-specific interview flows', 'Intuitive placement-ready UI'].map((item, i) => (
-                    <li key={i} className="flex items-center gap-3 text-slate-700 font-medium">
-                      <Check className="w-5 h-5 text-emerald-500" />
+                    <li key={i} className="flex items-center gap-3 text-slate-600 font-medium">
+                      <Check className="w-5 h-5 text-slate-500" />
                       {item}
                     </li>
                   ))}
@@ -864,36 +876,35 @@ function LandingPage({ onStart }: { onStart: () => void }) {
       </section>
 
       {/* How it Works Section */}
-      <section id="how-it-works" className="py-24 px-6">
+      <section id="how-it-works" className="py-24 px-6 bg-slate-50">
         <div className="max-w-7xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-20 space-y-4">
             <h2 className="text-4xl font-bold text-slate-900 tracking-tight">Three steps to interview mastery</h2>
-            <p className="text-lg text-slate-600">Our seamless process takes you from nervous to natural in minutes.</p>
+            <p className="text-lg text-slate-500">Our seamless process takes you from nervous to natural in minutes.</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-12 relative">
             {/* Connecting Line */}
-            <div className="hidden md:block absolute top-1/2 left-0 w-full h-0.5 bg-slate-100 -translate-y-1/2 z-0"></div>
+            <div className="hidden md:block absolute top-1/2 left-0 w-full h-0.5 bg-white -translate-y-1/2 z-0"></div>
             
             {[
               { step: "01", title: "Setup Context", desc: "Tell SkillSynth about your target role and experience level." },
               { step: "02", title: "Live Simulation", desc: "Engage in a high-pressure, AI-driven behavioral interview." },
               { step: "03", title: "DNA Analysis", desc: "Receive a deep-dive report on your soft skills and hireability." }
             ].map((item, i) => (
-              <div key={i} className="relative z-10 bg-white p-8 rounded-[2rem] border border-slate-100 text-center space-y-4">
-                <div className="w-12 h-12 bg-indigo-600 rounded-full flex items-center justify-center text-white font-bold mx-auto shadow-lg shadow-indigo-200">
+              <div key={i} className="relative z-10 glass3d p-8 rounded-[2rem] border border-slate-200 text-center space-y-4">
+                <div className="w-12 h-12 bg-cyan-100 rounded-full flex items-center justify-center text-cyan-400 font-bold mx-auto border border-cyan-500/30">
                   {item.step}
                 </div>
                 <h3 className="text-xl font-bold text-slate-900">{item.title}</h3>
-                <p className="text-slate-600 text-sm leading-relaxed">{item.desc}</p>
+                <p className="text-slate-500 text-sm leading-relaxed">{item.desc}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Pricing Section */}
-      <section id="pricing" className="py-24 px-6 bg-slate-900 text-white rounded-[4rem] mx-6 mb-24 overflow-hidden relative">
+      <section id="pricing" className="py-24 px-6 bg-slate-100 text-slate-900 rounded-[4rem] mx-6 mb-24 overflow-hidden relative">
         <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
           <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-500 blur-[120px] rounded-full"></div>
           <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-500 blur-[120px] rounded-full"></div>
@@ -902,25 +913,25 @@ function LandingPage({ onStart }: { onStart: () => void }) {
         <div className="max-w-7xl mx-auto relative z-10">
           <div className="text-center max-w-3xl mx-auto mb-20 space-y-4">
             <h2 className="text-4xl font-bold tracking-tight">Simple, transparent pricing</h2>
-            <p className="text-lg text-slate-400">Choose the plan that fits your career goals.</p>
+            <p className="text-lg text-slate-500">Choose the plan that fits your career goals.</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
               { 
-                name: "Free", 
-                price: "$0", 
+                name: "SkillSynth Starter", 
+                price: "Free", 
                 desc: "Perfect for a quick practice session.", 
                 features: ["1 Full Interview", "Basic DNA Report", "Vocal Analysis", "Community Access"],
                 cta: "Start Free",
                 popular: false
               },
               { 
-                name: "Pro", 
-                price: "$29", 
+                name: "SkillSynth Pro", 
+                price: "₹999/year", 
                 desc: "For serious job seekers.", 
-                features: ["Unlimited Interviews", "Deep Neural Analysis", "Video Feedback", "Priority Support", "Custom Scenarios"],
-                cta: "Go Pro",
+                features: ["Unlimited AI interviews", "Detailed SkillSynth DNA reports", "Progress tracking", "Priority support"],
+                cta: "Upgrade Now",
                 popular: true
               },
               { 
@@ -932,28 +943,27 @@ function LandingPage({ onStart }: { onStart: () => void }) {
                 popular: false
               }
             ].map((plan, i) => (
-              <div key={i} className={`p-10 rounded-[2.5rem] border ${plan.popular ? 'bg-indigo-600 border-indigo-400 shadow-2xl shadow-indigo-500/20' : 'bg-slate-800/50 border-slate-700'} flex flex-col h-full`}>
+              <div key={i} className={`p-8 rounded-3xl ${plan.popular ? 'glass3d border-cyan-500/30' : 'glass3d border-slate-200/50'} flex flex-col h-full`}>
                 <div className="mb-8">
-                  <h3 className="text-xl font-bold mb-2">{plan.name}</h3>
+                  <h3 className="text-xl font-bold mb-2 text-slate-900">{plan.name}</h3>
                   <div className="flex items-baseline gap-1 mb-4">
-                    <span className="text-4xl font-bold">{plan.price}</span>
-                    {plan.price !== "Custom" && <span className="text-sm opacity-60">/month</span>}
+                    <span className="text-4xl font-bold text-slate-900">{plan.price}</span>
                   </div>
-                  <p className="text-sm opacity-70 leading-relaxed">{plan.desc}</p>
+                  <p className="text-sm text-slate-500 leading-relaxed">{plan.desc}</p>
                 </div>
                 
                 <ul className="space-y-4 mb-10 flex-1">
                   {plan.features.map((feature, j) => (
-                    <li key={j} className="flex items-center gap-3 text-sm">
-                      <CheckCircle2 className={`w-5 h-5 ${plan.popular ? 'text-indigo-200' : 'text-indigo-500'}`} />
+                    <li key={j} className="flex items-center gap-3 text-sm text-slate-600">
+                      <CheckCircle2 className={`w-5 h-5 ${plan.popular ? 'text-cyan-400' : 'text-blue-500'}`} />
                       <span className="opacity-90">{feature}</span>
                     </li>
                   ))}
                 </ul>
 
                 <button 
-                  onClick={plan.name === "Free" ? onStart : undefined}
-                  className={`w-full py-4 rounded-2xl font-bold transition-all ${plan.popular ? 'bg-white text-indigo-600 hover:bg-slate-100' : 'bg-slate-700 text-white hover:bg-slate-600'}`}
+                  onClick={plan.name === "SkillSynth Starter" ? onStart : undefined}
+                  className={`w-full py-4 rounded-2xl font-bold transition-all shadow-[0_0_15px_rgba(6,182,212,0.2)] ${plan.popular ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:from-cyan-400 hover:to-blue-500' : 'bg-slate-100 text-slate-900 hover:bg-slate-200'}`}
                 >
                   {plan.cta}
                 </button>
@@ -967,8 +977,8 @@ function LandingPage({ onStart }: { onStart: () => void }) {
       <footer className="py-12 border-t border-slate-100">
         <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-8">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white">
-              <Brain className="w-5 h-5" />
+            <div className="w-8 h-8 flex items-center justify-center">
+              <Logo className="w-8 h-8" />
             </div>
             <span className="text-lg font-bold tracking-tight text-slate-900">SkillSynth</span>
           </div>
@@ -1044,8 +1054,6 @@ function ContextCollection({
     setContext({ ...context, [currentStepData.id]: option });
     if (step < steps.length) {
       setStep(step + 1);
-    } else {
-      onComplete();
     }
   };
 
@@ -1056,7 +1064,7 @@ function ContextCollection({
       className="w-full max-w-xl space-y-8"
     >
       <div className="space-y-4">
-        <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 uppercase tracking-widest">
+        <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 uppercase tracking-widest">
           <span>Simulation Setup</span>
           <span>Step {step} of {steps.length}</span>
         </div>
@@ -1080,23 +1088,51 @@ function ContextCollection({
         </div>
 
         <div className="grid grid-cols-1 gap-3">
-          {currentStepData.options.map((option) => (
-            <button
-              key={option}
-              onClick={() => handleOptionSelect(option)}
-              className="flex items-center justify-between p-4 rounded-2xl border border-slate-100 bg-slate-50 hover:bg-slate-100 hover:border-slate-200 transition-all text-left group"
-            >
-              <span className="font-medium text-slate-700 group-hover:text-indigo-600 transition-colors">{option}</span>
-              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 transition-colors" />
-            </button>
-          ))}
+          {currentStepData.options.map((option) => {
+            const isSelected = context[currentStepData.id as keyof CandidateContext] === option;
+            return (
+              <button
+                key={option}
+                onClick={() => handleOptionSelect(option)}
+                className={`flex items-center justify-between p-4 rounded-2xl border transition-all text-left group ${
+                  isSelected 
+                    ? "border-cyan-500 bg-cyan-50 ring-2 ring-cyan-500/20 shadow-[0_4px_20px_rgba(6,182,212,0.15)]" 
+                    : "border-slate-100 bg-slate-50 hover:bg-slate-100 hover:border-slate-200"
+                }`}
+              >
+                <span className={`font-medium transition-colors ${
+                  isSelected ? "text-cyan-900" : "text-slate-700 group-hover:text-cyan-600"
+                }`}>{option}</span>
+                <ChevronRight className={`w-4 h-4 transition-colors ${
+                  isSelected ? "text-cyan-600" : "text-slate-500 group-hover:text-cyan-600"
+                }`} />
+              </button>
+            );
+          })}
         </div>
+
+        {step === steps.length && context.interviewType && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex justify-center pt-6"
+          >
+            <button
+              onClick={onComplete}
+              disabled={isProcessing}
+              className="w-full py-4 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-2xl font-bold text-lg hover:from-cyan-400 hover:to-blue-500 transition-all shadow-[0_0_20px_rgba(6,182,212,0.3)] flex items-center justify-center gap-3 disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              {isProcessing ? "Starting..." : "Start Interview Simulation"}
+              {!isProcessing && <ChevronRight className="w-5 h-5" />}
+            </button>
+          </motion.div>
+        )}
       </div>
 
       {step > 1 && (
         <button 
           onClick={() => setStep(step - 1)}
-          className="text-[10px] font-mono text-slate-400 hover:text-indigo-600 transition-colors uppercase tracking-widest flex items-center gap-2 mx-auto"
+          className="text-[10px] font-mono text-slate-500 hover:text-indigo-600 transition-colors uppercase tracking-widest flex items-center gap-2 mx-auto"
         >
           <ChevronRight className="w-3 h-3 rotate-180" />
           Previous Step
@@ -1133,6 +1169,56 @@ function InterviewRoom({
   totalQuestions: number,
   cameraError: string | null
 }) {
+  const [isPreparing, setIsPreparing] = useState(false);
+  const [prepCountdown, setPrepCountdown] = useState(10);
+  const prepTimeLimit = 10;
+  
+  const [recordingTime, setRecordingTime] = useState(0);
+
+  useEffect(() => {
+    if (currentQuestion) {
+      if (isListening) stopListening();
+      setIsPreparing(true);
+      setPrepCountdown(prepTimeLimit);
+    }
+  }, [currentQuestion]);
+
+  useEffect(() => {
+    let timer: any;
+    if (isPreparing && prepCountdown > 0 && !isProcessing) {
+      timer = setTimeout(() => {
+        setPrepCountdown(c => c - 1);
+      }, 1000);
+    } else if (isPreparing && prepCountdown === 0 && !isProcessing) {
+      setIsPreparing(false);
+      startListening();
+    }
+    return () => clearTimeout(timer);
+  }, [isPreparing, prepCountdown, startListening, isProcessing]);
+
+  useEffect(() => {
+    let timer: any;
+    if (isListening && !isPreparing) {
+      timer = setInterval(() => {
+        setRecordingTime(t => t + 1);
+      }, 1000);
+    } else {
+      setRecordingTime(0);
+    }
+    return () => clearInterval(timer);
+  }, [isListening, isPreparing]);
+
+  const handleStartNow = () => {
+    setIsPreparing(false);
+    startListening();
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   return (
     <motion.div 
       initial={{ opacity: 0 }}
@@ -1168,8 +1254,8 @@ function InterviewRoom({
                   transition={{ repeat: Infinity, duration: 10, ease: "linear" }}
                   className="absolute inset-0 bg-gradient-to-tr from-indigo-500 to-purple-500 blur-3xl rounded-full" 
                 />
-                <div className="relative p-6 bg-white rounded-2xl border border-slate-100 shadow-xl">
-                  <Brain className="w-12 h-12 text-indigo-600" />
+                <div className="relative p-6 bg-slate-100 rounded-2xl border border-slate-200 shadow-xl">
+                  <Logo className="w-12 h-12" />
                 </div>
               </div>
             </div>
@@ -1200,93 +1286,56 @@ function InterviewRoom({
                 </div>
               </motion.div>
             </AnimatePresence>
-          </div>
-        </div>
 
-        <div className="bg-white/70 backdrop-blur-xl rounded-3xl p-8 border border-slate-100 shadow-sm relative overflow-hidden">
-          {isListening && (
-            <div className="absolute inset-0 pointer-events-none">
+            {isPreparing && (
               <motion.div 
-                animate={{ opacity: [0.1, 0.2, 0.1] }}
-                transition={{ repeat: Infinity, duration: 2 }}
-                className="absolute inset-0 bg-red-100/30"
-              />
-            </div>
-          )}
-          
-          <div className="flex items-center justify-between gap-6 relative z-10">
-            <div className="flex-1 space-y-2">
-              <div className="flex items-center gap-3">
-                <div className={`w-2 h-2 rounded-full ${isListening ? 'bg-red-500 animate-pulse' : 'bg-slate-300'}`} />
-                <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">Neural Voice Link</span>
-              </div>
-              <div className="flex items-center gap-4">
-                {isListening ? (
-                  <div className="flex gap-1 items-end h-6">
-                    {[...Array(12)].map((_, i) => (
-                      <motion.div
-                        key={i}
-                        animate={{ height: [4, Math.random() * 16 + 8, 4] }}
-                        transition={{ repeat: Infinity, duration: 0.5, delay: i * 0.05 }}
-                        className="w-1 bg-indigo-400 rounded-full"
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-slate-600 font-medium italic">
-                    Ready for your response...
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <motion.button
-              whileHover={{ scale: 1.05, boxShadow: "0 10px 25px -5px rgba(79, 70, 229, 0.2)" }}
-              whileTap={{ scale: 0.95 }}
-              onClick={isListening ? onSubmit : startListening}
-              disabled={isProcessing}
-              className={`px-10 py-4 rounded-2xl font-bold transition-all flex items-center gap-3 shadow-lg ${
-                isListening 
-                  ? 'bg-red-600 text-white shadow-red-200' 
-                  : 'bg-indigo-600 text-white shadow-indigo-200'
-              } disabled:opacity-50`}
-            >
-              {isListening ? (
-                <>
-                  <div className="relative">
-                    <Square className="w-5 h-5 fill-current" />
-                    <motion.div 
-                      animate={{ scale: [1, 1.5, 1], opacity: [1, 0, 1] }}
-                      transition={{ repeat: Infinity, duration: 1.5 }}
-                      className="absolute inset-0 border-2 border-white rounded-sm"
-                    />
-                  </div>
-                  Submit Answer
-                </>
-              ) : (
-                <>
-                  <Mic className="w-5 h-5" />
-                  Start Speaking
-                </>
-              )}
-            </motion.button>
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-8 bg-indigo-50 border border-indigo-100 rounded-2xl p-6 text-center"
+              >
+                <div className="text-4xl font-black text-indigo-600 mb-2">{prepCountdown}</div>
+                <p className="text-sm text-indigo-800 font-medium font-mono uppercase tracking-widest mb-4">
+                  Prepare your answer...
+                </p>
+                <button
+                  onClick={handleStartNow}
+                  className="px-6 py-2 bg-indigo-600 text-white rounded-full text-sm font-bold shadow-md hover:bg-indigo-700 transition"
+                >
+                  Start Answer Now
+                </button>
+              </motion.div>
+            )}
+            
+            {isListening && !isPreparing && (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="mt-8 inline-flex items-center gap-3 bg-red-50 border border-red-100 rounded-full px-6 py-3"
+              >
+                <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+                <span className="font-mono font-bold text-red-600 text-lg">
+                  {formatTime(recordingTime)}
+                </span>
+                <span className="text-sm font-medium text-red-800 ml-2">Recording Response</span>
+              </motion.div>
+            )}
           </div>
         </div>
       </div>
 
       {/* Sidebar: Video & History */}
       <div className="flex flex-col gap-6">
-        <div className="aspect-video rounded-3xl overflow-hidden border border-slate-100 shadow-xl relative group video-glow bg-slate-900 flex items-center justify-center">
+        <div className="aspect-video rounded-3xl overflow-hidden border border-slate-100 shadow-xl relative group video-glow bg-slate-100 flex items-center justify-center">
           {cameraError ? (
             <div className="text-center p-6 space-y-4 z-20">
               <div className="w-12 h-12 bg-red-500/20 rounded-full flex items-center justify-center mx-auto">
                 <AlertCircle className="w-6 h-6 text-red-400" />
               </div>
               <p className="text-sm font-medium text-red-200">{cameraError}</p>
-              <p className="text-xs text-slate-400">The interview will continue without video.</p>
+              <p className="text-xs text-slate-500">The interview will continue without video.</p>
               <button 
                 onClick={() => window.location.reload()}
-                className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm font-medium transition-colors"
+                className="px-4 py-2 bg-white/10 hover:bg-white/20 text-slate-900 rounded-lg text-sm font-medium transition-colors"
               >
                 Reload to Retry
               </button>
@@ -1303,7 +1352,7 @@ function InterviewRoom({
           <div className="absolute inset-0 border-[12px] border-white/5 pointer-events-none z-10" />
           <div className="absolute top-4 left-4 bg-black/40 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-mono uppercase tracking-widest flex items-center gap-2 border border-white/10 z-20">
             <div className={`w-2 h-2 rounded-full animate-pulse ${cameraError ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]' : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]'}`} />
-            <span className="text-white">{cameraError ? 'Feed Error' : 'Secure Feed'}</span>
+            <span className="text-slate-900">{cameraError ? 'Feed Error' : 'Secure Feed'}</span>
           </div>
           
           {/* Corner accents */}
@@ -1311,7 +1360,7 @@ function InterviewRoom({
           <div className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-white/20 m-4 rounded-bl-lg" />
         </div>
         <div className="space-y-2">
-          <p className="text-[10px] font-mono text-slate-400 uppercase tracking-[0.2em] text-center">
+          <p className="text-[10px] font-mono text-slate-500 uppercase tracking-[0.2em] text-center">
             Biometric Verification Active
           </p>
           <div className="flex justify-center gap-1">
@@ -1330,7 +1379,7 @@ function InterviewRoom({
           <motion.div 
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-indigo-600 rounded-2xl p-6 text-white shadow-xl shadow-indigo-200 relative overflow-hidden"
+            className="bg-indigo-600 rounded-2xl p-6 text-slate-900 shadow-xl shadow-indigo-200 relative overflow-hidden"
           >
             <motion.div 
               animate={{ x: ["-100%", "200%"] }}
@@ -1346,6 +1395,62 @@ function InterviewRoom({
             </div>
           </motion.div>
         )}
+
+        <div className="bg-white/70 backdrop-blur-xl rounded-3xl p-6 border border-slate-100 shadow-sm relative overflow-hidden">
+          {isListening && !isPreparing && (
+            <div className="absolute inset-0 pointer-events-none">
+              <motion.div 
+                animate={{ opacity: [0.1, 0.2, 0.1] }}
+                transition={{ repeat: Infinity, duration: 2 }}
+                className="absolute inset-0 bg-red-100/30"
+              />
+            </div>
+          )}
+          
+          <div className="flex flex-col gap-4 relative z-10 w-full">
+            <div className="flex justify-between items-center w-full">
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${isListening && !isPreparing ? 'bg-red-500 animate-pulse' : 'bg-slate-300'}`} />
+                <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">Voice Link</span>
+              </div>
+              <div className="flex items-center h-4">
+                {isListening && !isPreparing ? (
+                  <div className="flex gap-[2px] items-end h-4">
+                    {[...Array(6)].map((_, i) => (
+                      <motion.div
+                        key={i}
+                        animate={{ height: [4, Math.random() * 12 + 4, 4] }}
+                        transition={{ repeat: Infinity, duration: 0.5, delay: i * 0.05 }}
+                        className="w-[3px] bg-red-400 rounded-full"
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-slate-600 font-medium italic">
+                    {isPreparing ? "Initializing..." : "Waiting"}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <motion.button
+              whileHover={!(isPreparing || isProcessing) ? { scale: 1.02, boxShadow: "0 10px 25px -5px rgba(220, 38, 38, 0.2)" } : {}}
+              whileTap={!(isPreparing || isProcessing) ? { scale: 0.98 } : {}}
+              onClick={isListening && !isPreparing ? onSubmit : undefined}
+              disabled={isProcessing || isPreparing || (!isListening && !isPreparing)}
+              className={`w-full py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-sm ${
+                isListening && !isPreparing
+                  ? 'bg-red-600 text-white shadow-red-200' 
+                  : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+              } disabled:opacity-50`}
+            >
+              <div className="relative">
+                <Square className="w-4 h-4 fill-current" />
+              </div>
+              Stop Answer
+            </motion.button>
+          </div>
+        </div>
       </div>
     </motion.div>
   );
@@ -1383,7 +1488,7 @@ function LoadingReportPhase() {
           className="absolute inset-0 border-t-4 border-indigo-600 rounded-full"
         />
         <div className="absolute inset-0 flex items-center justify-center">
-          <Brain className="w-24 h-24 text-indigo-600 animate-pulse" />
+          <Logo className="w-24 h-24 animate-pulse" />
         </div>
       </div>
       
@@ -1433,6 +1538,9 @@ function LoadingReportPhase() {
       className="w-full max-w-7xl space-y-12 py-16 px-6 relative"
     >
       <div className="text-center space-y-4">
+        <div className="flex justify-center mb-6">
+          <Logo className="w-16 h-16" />
+        </div>
         <motion.div 
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -1450,7 +1558,7 @@ function LoadingReportPhase() {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Score Card */}
-        <div className="lg:col-span-4 glass p-10 rounded-[3rem] border-slate-100 flex flex-col items-center justify-center space-y-8 relative overflow-hidden group min-h-[450px]">
+        <div className="lg:col-span-4 glass3d p-10 rounded-[3rem] border border-cyan-500/20 flex flex-col items-center justify-center space-y-8 relative group min-h-[450px]">
           <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
           
           <div className="relative w-56 h-56 flex items-center justify-center">
@@ -1486,7 +1594,7 @@ function LoadingReportPhase() {
         </div>
 
         {/* Skill Bar Chart */}
-        <div className="lg:col-span-8 glass p-10 rounded-[3rem] border-slate-100 space-y-8 relative overflow-hidden flex flex-col">
+        <div className="lg:col-span-8 glass3d p-10 rounded-[3rem] border border-indigo-500/20 space-y-8 relative flex flex-col">
           <div className="flex items-center justify-between">
             <h3 className="text-2xl font-bold flex items-center gap-3 text-slate-900">
               <div className="p-2 bg-indigo-50 rounded-xl">
@@ -1532,7 +1640,7 @@ function LoadingReportPhase() {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Competency Pie Chart */}
-        <div className="lg:col-span-5 glass p-10 rounded-[3rem] border-slate-100 space-y-8 relative overflow-hidden flex flex-col">
+        <div className="lg:col-span-5 glass3d p-10 rounded-[3rem] border border-purple-500/20 space-y-8 relative flex flex-col">
           <h3 className="text-2xl font-bold flex items-center gap-3 text-slate-900">
             <div className="p-2 bg-purple-50 rounded-xl">
               <Target className="w-6 h-6 text-purple-600" />
@@ -1563,7 +1671,7 @@ function LoadingReportPhase() {
         </div>
 
         {/* Behavioral Insights */}
-        <div className="lg:col-span-7 glass p-10 rounded-[3rem] border-slate-100 space-y-10 relative overflow-hidden">
+        <div className="lg:col-span-7 glass3d p-10 rounded-[3rem] border border-slate-200/50 space-y-10 relative">
           <div className="space-y-6">
             <h3 className="text-2xl font-bold flex items-center gap-3 text-slate-900">
               <div className="p-2 bg-emerald-50 rounded-xl">
@@ -1602,7 +1710,7 @@ function LoadingReportPhase() {
       <div className="space-y-8">
         <div className="flex items-center gap-4">
           <div className="p-3 bg-indigo-600 rounded-2xl shadow-lg shadow-indigo-200">
-            <Sparkles className="w-8 h-8 text-white" />
+            <Sparkles className="w-8 h-8 text-slate-900" />
           </div>
           <div>
             <h3 className="text-3xl font-bold text-slate-900 tracking-tight">AI-Powered Growth Suggestions</h3>
@@ -1617,7 +1725,7 @@ function LoadingReportPhase() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.1 }}
-              className="glass p-8 rounded-[2.5rem] border-slate-100 space-y-6 flex flex-col"
+              className="glass3d p-8 rounded-[2.5rem] border border-slate-200/50 space-y-6 flex flex-col"
             >
               <div className="space-y-2">
                 <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600">
@@ -1664,7 +1772,7 @@ function LoadingReportPhase() {
 
       {/* Strengths & Weaknesses */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <div className="glass p-10 rounded-[3rem] border-slate-100 space-y-6">
+        <div className="glass3d p-10 rounded-[3rem] border border-emerald-500/20 space-y-6">
           <h3 className="text-xl font-bold text-emerald-600 flex items-center gap-2">
             <CheckCircle2 className="w-6 h-6" />
             Core Strengths
@@ -1678,7 +1786,7 @@ function LoadingReportPhase() {
             ))}
           </ul>
         </div>
-        <div className="glass p-10 rounded-[3rem] border-slate-100 space-y-6">
+        <div className="glass3d p-10 rounded-[3rem] border border-red-500/20 space-y-6">
           <h3 className="text-xl font-bold text-red-600 flex items-center gap-2">
             <AlertCircle className="w-6 h-6" />
             Growth Areas
@@ -1697,7 +1805,7 @@ function LoadingReportPhase() {
       <div className="flex justify-center pt-8">
         <button
           onClick={onRestart}
-          className="px-12 py-5 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-2xl shadow-slate-200 flex items-center gap-3 group"
+          className="px-12 py-5 bg-slate-100 text-slate-900 rounded-2xl font-bold hover:bg-white transition-all shadow-2xl shadow-slate-200 flex items-center gap-3 group"
         >
           <RefreshCcw className="w-5 h-5 group-hover:rotate-180 transition-transform duration-500" />
           Start New Simulation
