@@ -1,0 +1,5 @@
+{
+  "name": "SkilSynth AI",
+  "description": "Advanced AI-powered HR interviewer and soft skills evaluator simulating real placement interviews.",
+  "requestFramePermissions": ["camera", "microphone"]
+}
